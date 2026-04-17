@@ -10,6 +10,7 @@ import okhttp3.RequestBody.Companion.toRequestBody
 import java.util.concurrent.TimeUnit
 
 data class HeaderConfig(
+    val httpMethod: String = "POST",
     val contentType: String = "application/json",
     val extraHeaders: Map<String, String> = emptyMap(),
 )
@@ -59,21 +60,28 @@ object WebhookForwarder {
 
         scope.launch {
             try {
-                val requestBuilder = Request.Builder()
-                    .url(webhookUrl)
-                    .post(rendered.toRequestBody(headerConfig.contentType.toMediaType()))
+                val body = rendered.toRequestBody(headerConfig.contentType.toMediaType())
+                val requestBuilder = Request.Builder().url(webhookUrl)
 
-                // Add extra headers
+                when (headerConfig.httpMethod) {
+                    "GET" -> requestBuilder.get()
+                    "PUT" -> requestBuilder.put(body)
+                    "PATCH" -> requestBuilder.patch(body)
+                    "DELETE" -> requestBuilder.delete(body)
+                    else -> requestBuilder.post(body)
+                }
+
                 for ((key, value) in headerConfig.extraHeaders) {
                     requestBuilder.addHeader(key, value)
                 }
 
                 val request = requestBuilder.build()
 
-                // Format request headers for logging
                 val reqHeaders = buildString {
-                    appendLine("POST $webhookUrl")
-                    appendLine("Content-Type: ${headerConfig.contentType}")
+                    appendLine("${headerConfig.httpMethod} $webhookUrl")
+                    if (headerConfig.httpMethod != "GET") {
+                        appendLine("Content-Type: ${headerConfig.contentType}")
+                    }
                     for ((key, value) in headerConfig.extraHeaders) {
                         appendLine("$key: $value")
                     }
@@ -101,8 +109,10 @@ object WebhookForwarder {
                 }
             } catch (e: Exception) {
                 val reqHeaders = buildString {
-                    appendLine("POST $webhookUrl")
-                    appendLine("Content-Type: ${headerConfig.contentType}")
+                    appendLine("${headerConfig.httpMethod} $webhookUrl")
+                    if (headerConfig.httpMethod != "GET") {
+                        appendLine("Content-Type: ${headerConfig.contentType}")
+                    }
                     for ((key, value) in headerConfig.extraHeaders) {
                         appendLine("$key: $value")
                     }

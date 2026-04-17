@@ -52,6 +52,7 @@ class SmsReceiver : BroadcastReceiver() {
         val prefs = context.getSharedPreferences("sms_forwarder", Context.MODE_PRIVATE)
         val webhookUrl = prefs.getString("webhook_url", "") ?: ""
         val template = prefs.getString("json_template", "") ?: ""
+        val httpMethod = prefs.getString("http_method", "POST") ?: "POST"
         val contentType = prefs.getString("content_type", "application/json") ?: "application/json"
         val customHeadersRaw = prefs.getString("custom_headers", "") ?: ""
 
@@ -62,7 +63,7 @@ class SmsReceiver : BroadcastReceiver() {
                 extraHeaders[parts[0].trim()] = parts[1].trim()
             }
         }
-        val headerConfig = HeaderConfig(contentType = contentType, extraHeaders = extraHeaders)
+        val headerConfig = HeaderConfig(httpMethod = httpMethod, contentType = contentType, extraHeaders = extraHeaders)
 
         for ((sender, parts) in grouped) {
             val first = parts.first()

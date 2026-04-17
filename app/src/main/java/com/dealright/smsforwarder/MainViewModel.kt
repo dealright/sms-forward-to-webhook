@@ -27,6 +27,11 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     )
     val jsonTemplate: StateFlow<String> = _jsonTemplate.asStateFlow()
 
+    private val _httpMethod = MutableStateFlow(
+        prefs.getString("http_method", HTTP_METHODS[0]) ?: HTTP_METHODS[0]
+    )
+    val httpMethod: StateFlow<String> = _httpMethod.asStateFlow()
+
     private val _contentType = MutableStateFlow(
         prefs.getString("content_type", CONTENT_TYPES[0]) ?: CONTENT_TYPES[0]
     )
@@ -45,6 +50,11 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     fun setJsonTemplate(template: String) {
         _jsonTemplate.value = template
         prefs.edit().putString("json_template", template).apply()
+    }
+
+    fun setHttpMethod(method: String) {
+        _httpMethod.value = method
+        prefs.edit().putString("http_method", method).apply()
     }
 
     fun setContentType(ct: String) {
@@ -66,6 +76,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             }
         }
         return HeaderConfig(
+            httpMethod = _httpMethod.value,
             contentType = _contentType.value,
             extraHeaders = extra,
         )
@@ -98,6 +109,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     companion object {
         const val DEFAULT_WEBHOOK_URL = "https://chat.googleapis.com/v1/spaces/XXXXXXXXXXXXX/messages?key=YOUR_API_KEY&token=YOUR_TOKEN"
         const val DEFAULT_TEMPLATE = """{"text": "SMS from {{sender}}: {{body}}"}"""
+        val HTTP_METHODS = listOf("POST", "GET", "PUT", "PATCH", "DELETE")
         val CONTENT_TYPES = listOf(
             "application/json",
             "text/plain",

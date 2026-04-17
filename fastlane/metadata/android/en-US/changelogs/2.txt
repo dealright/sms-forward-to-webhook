@@ -1,0 +1,4 @@
+- Added HTTP method selector (POST, GET, PUT, PATCH, DELETE)
+- Fixed title overlapping status bar icons
+- Made entire app scrollable
+- Renamed title to "SMS Forward to Webhook"

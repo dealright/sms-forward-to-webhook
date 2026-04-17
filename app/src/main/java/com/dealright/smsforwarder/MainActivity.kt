@@ -5,16 +5,17 @@ import android.content.pm.PackageManager
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -47,6 +48,8 @@ class MainActivity : ComponentActivity() {
             requestPermissions.launch(needed)
         }
 
+        enableEdgeToEdge()
+
         setContent {
             MaterialTheme(colorScheme = darkColorScheme()) {
                 Surface(
@@ -65,6 +68,7 @@ class MainActivity : ComponentActivity() {
 fun ForwarderScreen(vm: MainViewModel = viewModel()) {
     val webhookUrl by vm.webhookUrl.collectAsState()
     val jsonTemplate by vm.jsonTemplate.collectAsState()
+    val httpMethod by vm.httpMethod.collectAsState()
     val contentType by vm.contentType.collectAsState()
     val customHeaders by vm.customHeaders.collectAsState()
     val logs by vm.logs.collectAsState()
@@ -74,10 +78,12 @@ fun ForwarderScreen(vm: MainViewModel = viewModel()) {
     Column(
         modifier = Modifier
             .fillMaxSize()
+            .statusBarsPadding()
+            .verticalScroll(rememberScrollState())
             .padding(16.dp)
     ) {
         Text(
-            text = "sms-forward-to-webhook",
+            text = "SMS Forward to Webhook",
             style = MaterialTheme.typography.headlineSmall,
             fontWeight = FontWeight.Bold,
             color = MaterialTheme.colorScheme.primary,
@@ -98,6 +104,30 @@ fun ForwarderScreen(vm: MainViewModel = viewModel()) {
                 fontSize = 13.sp,
             ),
         )
+
+        Spacer(modifier = Modifier.height(12.dp))
+
+        // HTTP Method selector
+        Text(
+            text = "HTTP Method",
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Spacer(modifier = Modifier.height(4.dp))
+        SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
+            MainViewModel.HTTP_METHODS.forEachIndexed { index, method ->
+                SegmentedButton(
+                    selected = httpMethod == method,
+                    onClick = { vm.setHttpMethod(method) },
+                    shape = SegmentedButtonDefaults.itemShape(
+                        index = index,
+                        count = MainViewModel.HTTP_METHODS.size,
+                    ),
+                ) {
+                    Text(text = method, fontSize = 11.sp, maxLines = 1)
+                }
+            }
+        }
 
         Spacer(modifier = Modifier.height(8.dp))
 
@@ -265,12 +295,12 @@ fun ForwarderScreen(vm: MainViewModel = viewModel()) {
 
         Spacer(modifier = Modifier.height(8.dp))
 
-        // Scrollable log
+        // Log entries (inline, since parent is scrollable)
         if (logs.isEmpty()) {
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .weight(1f),
+                    .height(120.dp),
                 contentAlignment = Alignment.Center,
             ) {
                 Text(
@@ -280,15 +310,9 @@ fun ForwarderScreen(vm: MainViewModel = viewModel()) {
                 )
             }
         } else {
-            LazyColumn(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .weight(1f),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                items(logs, key = { "${it.timestamp}-${it.sender}" }) { entry ->
-                    LogCard(entry)
-                }
+            logs.forEach { entry ->
+                LogCard(entry)
+                Spacer(modifier = Modifier.height(8.dp))
             }
         }
     }
