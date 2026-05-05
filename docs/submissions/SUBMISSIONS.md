@@ -12,7 +12,7 @@ IzzyOnDroid is a third-party F-Droid-compatible repo. They pull our **already-si
 **Steps:**
 
 1. Sign up / sign in at https://codeberg.org.
-2. Open https://codeberg.org/IzzyOnDroid/repo/issues.
+2. Open https://codeberg.org/IzzyOnDroid/repodata/issues (the older `IzzyOnDroid/repo` on GitLab is archived; submissions go through `repodata` on Codeberg now).
 3. Click **New Issue**.
 4. Title: `App request: SMS Forward to Webhook (com.dealright.smsforwarder)`
 5. Body — paste this:
