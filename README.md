@@ -1,12 +1,26 @@
+<p align="center">
+  <img src="docs/icon.png" alt="sms-forward-to-webhook" width="160" />
+</p>
+
 # sms-forward-to-webhook
 
 Android app that intercepts incoming SMS messages and forwards them to any webhook URL as an HTTP POST with a fully customizable JSON body.
 
 Works with Google Chat, Slack, Discord, Microsoft Teams, or any custom webhook endpoint.
 
-## Download
+## Install
 
-Grab the latest APK from [Releases](https://github.com/dealright/sms-forward-to-webhook/releases).
+**Direct APK** — download the latest signed APK from [Releases](https://github.com/dealright/sms-forward-to-webhook/releases) and install it. Android will warn about installing from an unknown source; that's expected.
+
+**[Obtainium](https://github.com/ImranR98/Obtainium)** — automatic updates straight from this repo's GitHub Releases. After installing Obtainium, add this app:
+
+```
+https://github.com/dealright/sms-forward-to-webhook
+```
+
+**F-Droid** — submission in progress. Once accepted, the app will be available at `https://f-droid.org/packages/com.dealright.smsforwarder/`.
+
+**IzzyOnDroid** — submission in progress. Once accepted, add the IzzyOnDroid repo to your F-Droid client and search for "SMS Forward to Webhook".
 
 ## Features
 
