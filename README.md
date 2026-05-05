@@ -6,7 +6,7 @@ Works with Google Chat, Slack, Discord, Microsoft Teams, or any custom webhook e
 
 ## Download
 
-Grab the latest APK from [Releases](https://github.com/dylanjamessnow/sms-forward-to-webhook/releases).
+Grab the latest APK from [Releases](https://github.com/dealright/sms-forward-to-webhook/releases).
 
 ## Features
 
@@ -70,7 +70,7 @@ adb shell am broadcast \
 
 ```bash
 # Clone
-git clone https://github.com/dylanjamessnow/sms-forward-to-webhook.git
+git clone https://github.com/dealright/sms-forward-to-webhook.git
 cd sms-forward-to-webhook
 
 # Set up local.properties with your Android SDK path
