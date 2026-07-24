@@ -1,0 +1,3 @@
+- Fixed: forwarding stopped after the phone had been idle ~30 minutes (Doze mode)
+- The webhook POST now completes reliably even with the screen off, by keeping the
+  process awake until delivery finishes (goAsync + wakelock)

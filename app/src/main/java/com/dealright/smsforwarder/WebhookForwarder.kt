@@ -2,6 +2,7 @@ package com.dealright.smsforwarder
 
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
@@ -17,10 +18,14 @@ data class HeaderConfig(
 
 object WebhookForwarder {
 
+    // A manifest BroadcastReceiver using goAsync() has roughly a 10s budget before
+    // the system may kill/ANR it, so bound the whole call well under that. callTimeout
+    // caps the entire request (connect + write + read) regardless of the sub-timeouts.
     private val client = OkHttpClient.Builder()
-        .connectTimeout(10, TimeUnit.SECONDS)
-        .writeTimeout(10, TimeUnit.SECONDS)
-        .readTimeout(10, TimeUnit.SECONDS)
+        .connectTimeout(5, TimeUnit.SECONDS)
+        .writeTimeout(5, TimeUnit.SECONDS)
+        .readTimeout(5, TimeUnit.SECONDS)
+        .callTimeout(8, TimeUnit.SECONDS)
         .build()
 
     private val scope = CoroutineScope(Dispatchers.IO)
@@ -41,7 +46,12 @@ object WebhookForwarder {
         }
     }
 
-    fun forward(smsData: SmsData, webhookUrl: String, template: String, headerConfig: HeaderConfig) {
+    /**
+     * Kicks off the webhook delivery on the IO dispatcher and returns the [Job] so the
+     * caller (the SMS receiver) can await completion before releasing its wakelock and
+     * finishing the broadcast. Returns an already-completed Job when there is nothing to send.
+     */
+    fun forward(smsData: SmsData, webhookUrl: String, template: String, headerConfig: HeaderConfig): Job {
         val logRepo = SmsForwarderApp.instance.logRepository
 
         if (webhookUrl.isBlank()) {
@@ -51,14 +61,14 @@ object WebhookForwarder {
                 webhookUrl = "(not set)",
                 error = "No webhook URL configured",
             )
-            return
+            return Job().apply { complete() }
         }
 
         val effectiveTemplate = template.ifBlank { DEFAULT_TEMPLATE }
         val vars = smsData.toTemplateMap()
         val rendered = renderTemplate(effectiveTemplate, vars)
 
-        scope.launch {
+        return scope.launch {
             try {
                 val body = rendered.toRequestBody(headerConfig.contentType.toMediaType())
                 val requestBuilder = Request.Builder().url(webhookUrl)
