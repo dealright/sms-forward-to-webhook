@@ -7,6 +7,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.activity.viewModels
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -33,9 +34,14 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 
 class MainActivity : ComponentActivity() {
 
+    private val vm: MainViewModel by viewModels()
+
     private val requestPermissions = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
-    ) { /* permissions handled via UI state */ }
+    ) {
+        // A newly-granted READ_PHONE_STATE lets us detect and label the SIMs.
+        vm.refreshSims()
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -43,6 +49,7 @@ class MainActivity : ComponentActivity() {
         val needed = arrayOf(
             Manifest.permission.RECEIVE_SMS,
             Manifest.permission.READ_SMS,
+            Manifest.permission.READ_PHONE_STATE,
         ).filter {
             ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED
         }.toTypedArray()
@@ -59,7 +66,7 @@ class MainActivity : ComponentActivity() {
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background
                 ) {
-                    ForwarderScreen()
+                    ForwarderScreen(vm)
                 }
             }
         }
@@ -74,9 +81,12 @@ fun ForwarderScreen(vm: MainViewModel = viewModel()) {
     val httpMethod by vm.httpMethod.collectAsState()
     val contentType by vm.contentType.collectAsState()
     val customHeaders by vm.customHeaders.collectAsState()
+    val sims by vm.sims.collectAsState()
+    val simWebhookUrls by vm.simWebhookUrls.collectAsState()
     val logs by vm.logs.collectAsState()
     var showVarRef by remember { mutableStateOf(false) }
     var showHeaders by remember { mutableStateOf(false) }
+    var showSimRouting by remember { mutableStateOf(false) }
 
     Column(
         modifier = Modifier
@@ -116,6 +126,51 @@ fun ForwarderScreen(vm: MainViewModel = viewModel()) {
                 fontSize = 13.sp,
             ),
         )
+
+        // Per-SIM webhooks (collapsible, dual SIM)
+        TextButton(onClick = { showSimRouting = !showSimRouting }) {
+            Text(
+                if (showSimRouting) "Hide per-SIM webhooks" else "Per-SIM webhooks (dual SIM)",
+                fontSize = 12.sp,
+            )
+        }
+        AnimatedVisibility(visible = showSimRouting) {
+            Column {
+                Text(
+                    text = "A SIM-specific URL overrides the Webhook URL above for messages received on that SIM. Leave blank to use the default.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+
+                val slots = if (sims.isNotEmpty()) sims.map { it.slotIndex } else (0 until Prefs.MAX_SIM_SLOTS).toList()
+                slots.forEach { slot ->
+                    val sim = sims.firstOrNull { it.slotIndex == slot }
+                    val fieldLabel = sim?.label() ?: "SIM ${slot + 1} (slot $slot)"
+                    OutlinedTextField(
+                        value = simWebhookUrls[slot] ?: "",
+                        onValueChange = { vm.setSimWebhookUrl(slot, it) },
+                        label = { Text(fieldLabel) },
+                        placeholder = { Text("Leave blank to use default webhook") },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = false,
+                        textStyle = LocalTextStyle.current.copy(
+                            fontFamily = FontFamily.Monospace,
+                            fontSize = 13.sp,
+                        ),
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                }
+
+                if (sims.isEmpty()) {
+                    Text(
+                        text = "Grant the phone permission to auto-detect and label your SIMs. Routing by slot still works without it.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+        }
 
         Spacer(modifier = Modifier.height(12.dp))
 

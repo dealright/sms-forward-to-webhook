@@ -12,16 +12,20 @@ import android.content.Intent
  *     -a com.dealright.smsforwarder.DEBUG_SMS \
  *     --es sender "+15551234567" \
  *     --es body "Hello from adb" \
+ *     --ei slot 0 \
  *     -n com.dealright.smsforwarder/.DebugSmsReceiver
+ *
+ * The optional --ei slot <0|1> extra selects which SIM's webhook to route to.
  */
 class DebugSmsReceiver : BroadcastReceiver() {
 
     override fun onReceive(context: Context, intent: Intent) {
         val sender = intent.getStringExtra("sender") ?: "+0000000000"
         val body = intent.getStringExtra("body") ?: "(empty)"
+        val slot = intent.getIntExtra("slot", 0)
 
-        val prefs = context.getSharedPreferences("sms_forwarder", Context.MODE_PRIVATE)
-        val webhookUrl = prefs.getString("webhook_url", "") ?: ""
+        val prefs = context.getSharedPreferences(Prefs.NAME, Context.MODE_PRIVATE)
+        val webhookUrl = Prefs.resolveWebhookUrl(prefs, slot)
         val template = prefs.getString("json_template", "") ?: ""
         val httpMethod = prefs.getString("http_method", "POST") ?: "POST"
         val contentType = prefs.getString("content_type", "application/json") ?: "application/json"
@@ -46,7 +50,7 @@ class DebugSmsReceiver : BroadcastReceiver() {
             isEmail = false,
             protocolId = 0,
             status = -1,
-            simSlot = 0,
+            simSlot = slot,
             simName = "DEBUG",
             carrierName = "adb",
             countryIso = "us",

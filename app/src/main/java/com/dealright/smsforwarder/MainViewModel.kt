@@ -9,13 +9,14 @@ import kotlinx.coroutines.flow.asStateFlow
 
 class MainViewModel(app: Application) : AndroidViewModel(app) {
 
-    private val prefs = app.getSharedPreferences("sms_forwarder", Context.MODE_PRIVATE)
+    private val appContext = app.applicationContext
+    private val prefs = app.getSharedPreferences(Prefs.NAME, Context.MODE_PRIVATE)
     val logs = SmsForwarderApp.instance.logRepository.logs
 
     init {
         // Migrate: if webhook is blank from a previous install, apply new default
-        if (prefs.getString("webhook_url", "").isNullOrBlank()) {
-            prefs.edit().putString("webhook_url", DEFAULT_WEBHOOK_URL).apply()
+        if (prefs.getString(Prefs.WEBHOOK_URL, "").isNullOrBlank()) {
+            prefs.edit().putString(Prefs.WEBHOOK_URL, DEFAULT_WEBHOOK_URL).apply()
         }
     }
 
@@ -42,6 +43,18 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     )
     val customHeaders: StateFlow<String> = _customHeaders.asStateFlow()
 
+    /** Active SIMs detected on the device (empty until READ_PHONE_STATE is granted). */
+    private val _sims = MutableStateFlow(detectSims(appContext))
+    val sims: StateFlow<List<SimInfo>> = _sims.asStateFlow()
+
+    /** Per-SIM webhook overrides, keyed by slot index. */
+    private val _simWebhookUrls = MutableStateFlow(
+        (0 until Prefs.MAX_SIM_SLOTS).associateWith { slot ->
+            prefs.getString(Prefs.simKey(slot), "") ?: ""
+        }
+    )
+    val simWebhookUrls: StateFlow<Map<Int, String>> = _simWebhookUrls.asStateFlow()
+
     fun setWebhookUrl(url: String) {
         _webhookUrl.value = url
         prefs.edit().putString("webhook_url", url).apply()
@@ -65,6 +78,16 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     fun setCustomHeaders(headers: String) {
         _customHeaders.value = headers
         prefs.edit().putString("custom_headers", headers).apply()
+    }
+
+    fun setSimWebhookUrl(slot: Int, url: String) {
+        _simWebhookUrls.value = _simWebhookUrls.value.toMutableMap().apply { put(slot, url) }
+        prefs.edit().putString(Prefs.simKey(slot), url).apply()
+    }
+
+    /** Re-reads active SIMs; call after the phone permission is granted. */
+    fun refreshSims() {
+        _sims.value = detectSims(appContext)
     }
 
     fun buildHeaderConfig(): HeaderConfig {
@@ -103,7 +126,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             countryIso = "us",
             format = "3gpp",
         )
-        WebhookForwarder.forward(testData, _webhookUrl.value, _jsonTemplate.value, buildHeaderConfig())
+        // Resolve the same way an incoming SMS would, so the test exercises per-SIM routing.
+        val url = Prefs.resolveWebhookUrl(prefs, testData.simSlot)
+        WebhookForwarder.forward(testData, url, _jsonTemplate.value, buildHeaderConfig())
     }
 
     companion object {
