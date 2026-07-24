@@ -1,0 +1,4 @@
+- Added dual-SIM support: route each SIM's incoming SMS to its own webhook
+- Auto-detect and label active SIMs by carrier/number (requires phone permission)
+- Per-SIM URL falls back to the default webhook when left blank
+- Now requests READ_PHONE_STATE so the {{sim_slot}}/{{sim_name}}/{{carrier}} variables populate

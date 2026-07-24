@@ -49,8 +49,10 @@ class SmsReceiver : BroadcastReceiver() {
         // Group message parts by sender (multi-part SMS)
         val grouped = messages.groupBy { it.originatingAddress ?: "Unknown" }
 
-        val prefs = context.getSharedPreferences("sms_forwarder", Context.MODE_PRIVATE)
-        val webhookUrl = prefs.getString("webhook_url", "") ?: ""
+        val prefs = context.getSharedPreferences(Prefs.NAME, Context.MODE_PRIVATE)
+        // Per-SIM routing: a slot-specific webhook overrides the global one;
+        // a blank slot URL or an undetermined slot falls back to the global default.
+        val webhookUrl = Prefs.resolveWebhookUrl(prefs, simSlot)
         val template = prefs.getString("json_template", "") ?: ""
         val httpMethod = prefs.getString("http_method", "POST") ?: "POST"
         val contentType = prefs.getString("content_type", "application/json") ?: "application/json"

@@ -26,6 +26,7 @@ https://github.com/dealright/sms-forward-to-webhook
 
 - **Customizable JSON template** — write your own request body using `{{variable}}` placeholders
 - **14 SMS fields** — sender, body, timestamp, SIM slot, carrier, country, service center, format, and more
+- **Dual-SIM routing** — send each SIM's incoming SMS to its own webhook, with a shared default fallback
 - **Configurable headers** — Content-Type selector (JSON, text, form-urlencoded) + custom HTTP headers
 - **Full debug log** — every forwarded message shows request headers, request body, response headers, and response body
 - **Test button** — verify your webhook works without waiting for a real SMS
@@ -68,6 +69,18 @@ https://github.com/dealright/sms-forward-to-webhook
 {"from": "{{sender}}", "message": "{{body}}", "sim": "{{sim_name}}", "carrier": "{{carrier}}", "ts": "{{timestamp}}"}
 ```
 
+## Dual SIM
+
+The app receives SMS from every active SIM and records which SIM each message
+arrived on (`{{sim_slot}}`, `{{sim_name}}`, `{{carrier}}`). Under **Per-SIM
+webhooks (dual SIM)** you can give each SIM its own webhook URL: a message
+received on that SIM is routed to its URL, and any SIM left blank falls back to
+the default **Webhook URL** at the top.
+
+Granting the phone permission (prompted on first launch) lets the app auto-detect
+and label each SIM by carrier and number. Routing by slot still works if you
+decline — you just won't get the friendly labels.
+
 ## Testing via adb
 
 You can simulate an inbound SMS from your computer without needing a real text:
@@ -77,8 +90,11 @@ adb shell am broadcast \
   -a com.dealright.smsforwarder.DEBUG_SMS \
   --es sender "+15559876543" \
   --es body "Hello from adb" \
+  --ei slot 0 \
   -n com.dealright.smsforwarder/.DebugSmsReceiver
 ```
+
+The optional `--ei slot <0|1>` extra selects which SIM's webhook to route to.
 
 ## Building from source
 
@@ -110,6 +126,7 @@ Then run `./gradlew assembleRelease`.
 
 - Android 8.0+ (API 26)
 - SMS permissions (prompted on first launch)
+- Phone permission (`READ_PHONE_STATE`) — optional, enables SIM detection and per-SIM routing labels
 
 ## License
 
