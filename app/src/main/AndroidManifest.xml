@@ -4,6 +4,10 @@
     <uses-permission android:name="android.permission.RECEIVE_SMS" />
     <uses-permission android:name="android.permission.READ_SMS" />
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- Keep the process alive long enough to finish the webhook POST while the
+         device is in Doze (screen off, stationary). Without this the process is
+         frozen the moment onReceive returns and the fire-and-forget POST is lost. -->
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
 
     <application
         android:name=".SmsForwarderApp"
