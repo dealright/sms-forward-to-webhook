@@ -1,0 +1,2 @@
+- Fix: SMS forwarding failed with the screen off or the phone in Doze. Each message is now sent by a system job that has network access in Doze, survives the app being closed or killed, and retries until the webhook accepts it.
+- The app asks once to be exempt from battery optimization so retries are not delayed.
