@@ -1,9 +1,5 @@
 package com.dealright.smsforwarder
 
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.launch
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -18,17 +14,11 @@ data class HeaderConfig(
 
 object WebhookForwarder {
 
-    // A manifest BroadcastReceiver using goAsync() has roughly a 10s budget before
-    // the system may kill/ANR it, so bound the whole call well under that. callTimeout
-    // caps the entire request (connect + write + read) regardless of the sub-timeouts.
     private val client = OkHttpClient.Builder()
-        .connectTimeout(5, TimeUnit.SECONDS)
-        .writeTimeout(5, TimeUnit.SECONDS)
-        .readTimeout(5, TimeUnit.SECONDS)
-        .callTimeout(8, TimeUnit.SECONDS)
+        .connectTimeout(10, TimeUnit.SECONDS)
+        .writeTimeout(10, TimeUnit.SECONDS)
+        .readTimeout(10, TimeUnit.SECONDS)
         .build()
-
-    private val scope = CoroutineScope(Dispatchers.IO)
 
     private val DEFAULT_TEMPLATE = """{"text": "SMS from {{sender}}: {{body}}"}"""
 
@@ -47,96 +37,99 @@ object WebhookForwarder {
     }
 
     /**
-     * Kicks off the webhook delivery on the IO dispatcher and returns the [Job] so the
-     * caller (the SMS receiver) can await completion before releasing its wakelock and
-     * finishing the broadcast. Returns an already-completed Job when there is nothing to send.
+     * Queues the SMS for delivery. The send runs in [ForwardJob], an expedited
+     * JobScheduler job that survives the receiver returning, the process being frozen or
+     * killed, and Doze: it waits for network and retries with backoff.
      */
-    fun forward(smsData: SmsData, webhookUrl: String, template: String, headerConfig: HeaderConfig): Job {
-        val logRepo = SmsForwarderApp.instance.logRepository
-
+    fun forward(smsData: SmsData, webhookUrl: String, template: String, headerConfig: HeaderConfig) {
         if (webhookUrl.isBlank()) {
-            logRepo.addLog(
+            SmsForwarderApp.instance.logRepository.addLog(
                 sender = smsData.sender,
                 body = smsData.body,
                 webhookUrl = "(not set)",
                 error = "No webhook URL configured",
             )
-            return Job().apply { complete() }
+            return
         }
 
         val effectiveTemplate = template.ifBlank { DEFAULT_TEMPLATE }
-        val vars = smsData.toTemplateMap()
-        val rendered = renderTemplate(effectiveTemplate, vars)
+        val rendered = renderTemplate(effectiveTemplate, smsData.toTemplateMap())
+        ForwardJob.enqueue(SmsForwarderApp.instance, smsData, webhookUrl, rendered, headerConfig)
+    }
 
-        return scope.launch {
-            try {
-                val body = rendered.toRequestBody(headerConfig.contentType.toMediaType())
-                val requestBuilder = Request.Builder().url(webhookUrl)
+    /** True when the send succeeded or must not be retried. */
+    fun send(
+        sender: String,
+        smsBody: String,
+        webhookUrl: String,
+        rendered: String,
+        headerConfig: HeaderConfig,
+        willRetry: Boolean,
+        logFailure: Boolean = true,
+    ): Boolean {
+        val logRepo = SmsForwarderApp.instance.logRepository
 
-                when (headerConfig.httpMethod) {
-                    "GET" -> requestBuilder.get()
-                    "PUT" -> requestBuilder.put(body)
-                    "PATCH" -> requestBuilder.patch(body)
-                    "DELETE" -> requestBuilder.delete(body)
-                    else -> requestBuilder.post(body)
-                }
+        val reqHeaders = buildString {
+            appendLine("${headerConfig.httpMethod} $webhookUrl")
+            if (headerConfig.httpMethod != "GET") {
+                appendLine("Content-Type: ${headerConfig.contentType}")
+            }
+            for ((key, value) in headerConfig.extraHeaders) {
+                appendLine("$key: $value")
+            }
+        }.trim()
 
-                for ((key, value) in headerConfig.extraHeaders) {
-                    requestBuilder.addHeader(key, value)
-                }
+        try {
+            val body = rendered.toRequestBody(headerConfig.contentType.toMediaType())
+            val requestBuilder = Request.Builder().url(webhookUrl)
 
-                val request = requestBuilder.build()
+            when (headerConfig.httpMethod) {
+                "GET" -> requestBuilder.get()
+                "PUT" -> requestBuilder.put(body)
+                "PATCH" -> requestBuilder.patch(body)
+                "DELETE" -> requestBuilder.delete(body)
+                else -> requestBuilder.post(body)
+            }
 
-                val reqHeaders = buildString {
-                    appendLine("${headerConfig.httpMethod} $webhookUrl")
-                    if (headerConfig.httpMethod != "GET") {
-                        appendLine("Content-Type: ${headerConfig.contentType}")
-                    }
-                    for ((key, value) in headerConfig.extraHeaders) {
-                        appendLine("$key: $value")
-                    }
-                }.trim()
+            for ((key, value) in headerConfig.extraHeaders) {
+                requestBuilder.addHeader(key, value)
+            }
 
-                client.newCall(request).execute().use { response ->
-                    // Format response headers
-                    val respHeaders = buildString {
-                        appendLine("HTTP ${response.code} ${response.message}")
-                        for (name in response.headers.names()) {
-                            appendLine("$name: ${response.header(name)}")
-                        }
-                    }.trim()
-
-                    logRepo.addLog(
-                        sender = smsData.sender,
-                        body = smsData.body,
-                        webhookUrl = webhookUrl,
-                        requestHeaders = reqHeaders,
-                        requestJson = rendered,
-                        responseCode = response.code,
-                        responseHeaders = respHeaders,
-                        responseBody = response.body?.string()?.take(1000),
-                    )
-                }
-            } catch (e: Exception) {
-                val reqHeaders = buildString {
-                    appendLine("${headerConfig.httpMethod} $webhookUrl")
-                    if (headerConfig.httpMethod != "GET") {
-                        appendLine("Content-Type: ${headerConfig.contentType}")
-                    }
-                    for ((key, value) in headerConfig.extraHeaders) {
-                        appendLine("$key: $value")
+            client.newCall(requestBuilder.build()).execute().use { response ->
+                val respHeaders = buildString {
+                    appendLine("HTTP ${response.code} ${response.message}")
+                    for (name in response.headers.names()) {
+                        appendLine("$name: ${response.header(name)}")
                     }
                 }.trim()
 
+                // Server-side trouble is worth another try; a 4xx will fail the same way again.
+                val retryable = response.code == 429 || response.code >= 500
+                if (retryable && !logFailure) return false
                 logRepo.addLog(
-                    sender = smsData.sender,
-                    body = smsData.body,
+                    sender = sender,
+                    body = smsBody,
                     webhookUrl = webhookUrl,
                     requestHeaders = reqHeaders,
                     requestJson = rendered,
-                    error = "${e.javaClass.simpleName}: ${e.message}",
+                    responseCode = response.code,
+                    responseHeaders = respHeaders,
+                    responseBody = response.body?.string()?.take(1000),
+                    error = if (retryable && willRetry) "Will retry" else null,
                 )
+                return !retryable
             }
+        } catch (e: Exception) {
+            if (!logFailure) return false
+            logRepo.addLog(
+                sender = sender,
+                body = smsBody,
+                webhookUrl = webhookUrl,
+                requestHeaders = reqHeaders,
+                requestJson = rendered,
+                error = "${e.javaClass.simpleName}: ${e.message}" + if (willRetry) " (will retry)" else "",
+            )
+            return false
         }
     }
 }

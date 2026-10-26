@@ -4,14 +4,8 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.os.Build
-import android.os.PowerManager
 import android.provider.Telephony
 import android.telephony.SubscriptionManager
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.joinAll
-import kotlinx.coroutines.launch
 
 class SmsReceiver : BroadcastReceiver() {
 
@@ -73,19 +67,6 @@ class SmsReceiver : BroadcastReceiver() {
         }
         val headerConfig = HeaderConfig(httpMethod = httpMethod, contentType = contentType, extraHeaders = extraHeaders)
 
-        // Keep the broadcast (and the process) alive until every POST finishes. Without
-        // goAsync() the receiver is considered done the instant onReceive returns, and in
-        // Doze the process is frozen before the fire-and-forget coroutines can complete —
-        // which is why forwarding stopped after the phone had been idle ~30 minutes. The
-        // wakelock guarantees CPU stays on for that window; both are released in finally.
-        val pendingResult = goAsync()
-        val powerManager = context.getSystemService(Context.POWER_SERVICE) as PowerManager
-        val wakeLock = powerManager.newWakeLock(
-            PowerManager.PARTIAL_WAKE_LOCK,
-            "com.dealright.smsforwarder:forward",
-        ).apply { acquire(WAKELOCK_TIMEOUT_MS) }
-
-        val jobs = mutableListOf<Job>()
         for ((sender, parts) in grouped) {
             val first = parts.first()
             val body = parts.joinToString("") { it.messageBody ?: "" }
@@ -107,21 +88,7 @@ class SmsReceiver : BroadcastReceiver() {
                 format = format,
             )
 
-            jobs += WebhookForwarder.forward(smsData, webhookUrl, template, headerConfig)
+            WebhookForwarder.forward(smsData, webhookUrl, template, headerConfig)
         }
-
-        CoroutineScope(Dispatchers.IO).launch {
-            try {
-                jobs.joinAll()
-            } finally {
-                if (wakeLock.isHeld) wakeLock.release()
-                pendingResult.finish()
-            }
-        }
-    }
-
-    private companion object {
-        // Safety backstop; the POST itself is capped at 8s (callTimeout) in WebhookForwarder.
-        private const val WAKELOCK_TIMEOUT_MS = 15_000L
     }
 }
