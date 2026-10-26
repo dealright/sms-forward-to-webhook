@@ -26,6 +26,7 @@ https://github.com/dealright/sms-forward-to-webhook
 
 - **Customizable JSON template** — write your own request body using `{{variable}}` placeholders
 - **14 SMS fields** — sender, body, timestamp, SIM slot, carrier, country, service center, format, and more
+- **Works with the phone locked** — delivery survives screen lock, Doze, the app being closed or killed, and reboots, and retries until the webhook accepts the message
 - **Dual-SIM routing** — send each SIM's incoming SMS to its own webhook, with a shared default fallback
 - **Configurable headers** — Content-Type selector (JSON, text, form-urlencoded) + custom HTTP headers
 - **Full debug log** — every forwarded message shows request headers, request body, response headers, and response body
@@ -81,6 +82,31 @@ Granting the phone permission (prompted on first launch) lets the app auto-detec
 and label each SIM by carrier and number. Routing by slot still works if you
 decline — you just won't get the friendly labels.
 
+## Reliability
+
+Each incoming SMS is handed to an Android system job (JobScheduler) instead of
+being sent from the SMS receiver directly. The job:
+
+- has network access in Doze, even when the app is battery-optimized (an
+  expedited job on Android 12+)
+- runs with the screen locked and the app closed; Android starts the app for it
+- is saved to disk, so it survives the app being killed and a reboot
+- waits for a network connection, then retries quick failures after 5, 10, 20,
+  40 and 60 seconds, then with exponential backoff for up to 24 hours. `429`
+  and `5xx` responses are retried; other `4xx` responses are not
+
+On first launch the app asks to be exempt from battery optimization. Delivery
+works without the exemption; with it, backoff retries are not held until a
+Doze maintenance window.
+
+Limits Android imposes on every app:
+
+- **Force stop** (Settings > Apps > Force stop) blocks all broadcasts until the
+  app is opened again.
+- **RCS and iMessage** chats are not SMS. Android does not announce them to
+  apps, so they are not forwarded. To test, send a plain SMS (turn off RCS
+  chats on the sending phone) or use a verification-code SMS.
+
 ## Testing via adb
 
 You can simulate an inbound SMS from your computer without needing a real text:
@@ -127,6 +153,7 @@ Then run `./gradlew assembleRelease`.
 - Android 8.0+ (API 26)
 - SMS permissions (prompted on first launch)
 - Phone permission (`READ_PHONE_STATE`) — optional, enables SIM detection and per-SIM routing labels
+- Battery optimization exemption — optional, prompted on first launch, makes retries faster
 
 ## License
 

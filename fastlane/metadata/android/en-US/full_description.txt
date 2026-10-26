@@ -1,6 +1,7 @@
 sms-forward-to-webhook intercepts incoming SMS messages on your Android device and forwards them to any webhook URL (Google Chat, Slack, Discord, custom servers, etc.) as an HTTP POST with a fully customizable JSON body.
 
 Features:
+- Works with the phone locked: delivery survives Doze, the app being closed or killed, and reboots, and retries until the webhook accepts the message
 - Customizable JSON body template using {{variable}} placeholders
 - 14 SMS fields available: sender, body, timestamp, SIM slot, carrier, country, service center, and more
 - Configurable Content-Type header (application/json, text/plain, x-www-form-urlencoded)
